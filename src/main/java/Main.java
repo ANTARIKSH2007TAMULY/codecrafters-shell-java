@@ -16,13 +16,27 @@ public class Main {
             if (parts.isEmpty()) {
                 continue;
             }
+            String outputFile = extractStdoutRedirect(parts);
+            if (parts.isEmpty()) {
+                continue;
+            }
             String command = parts.get(0);
             if (command.equals("exit")) {
                 break;
             } else if (command.equals("echo")) {
-                System.out.println(String.join(" ", parts.subList(1, parts.size())));
+                String output = String.join(" ", parts.subList(1, parts.size()));
+                if (outputFile != null) {
+                    Files.writeString(Paths.get(outputFile), output + "\n");
+                } else {
+                    System.out.println(output);
+                }
             } else if (command.equals("pwd")) {
-                System.out.println(System.getProperty("user.dir"));
+                String dir = System.getProperty("user.dir");
+                if (outputFile != null) {
+                    Files.writeString(Paths.get(outputFile), dir + "\n");
+                } else {
+                    System.out.println(dir);
+                }
             } else if (command.equals("cd")) {
                 String dir = parts.get(1);
                 if (dir.startsWith("~")) {
@@ -36,20 +50,31 @@ public class Main {
                 }
             } else if (command.equals("type")) {
                 String cmd = parts.get(1);
+                String output;
                 if (cmd.equals("echo") || cmd.equals("exit") || cmd.equals("type") || cmd.equals("pwd") || cmd.equals("cd")) {
-                    System.out.println(cmd + " is a shell builtin");
+                    output = cmd + " is a shell builtin";
                 } else {
                     String foundPath = findExecutable(cmd);
                     if (foundPath != null) {
-                        System.out.println(cmd + " is " + foundPath);
+                        output = cmd + " is " + foundPath;
                     } else {
-                        System.out.println(cmd + ": not found");
+                        output = cmd + ": not found";
                     }
+                }
+                if (outputFile != null) {
+                    Files.writeString(Paths.get(outputFile), output + "\n");
+                } else {
+                    System.out.println(output);
                 }
             } else {
                 if (findExecutable(command) != null) {
                     ProcessBuilder pb = new ProcessBuilder(parts);
-                    pb.inheritIO();
+                    if (outputFile != null) {
+                        pb.redirectOutput(new File(outputFile));
+                        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+                    } else {
+                        pb.inheritIO();
+                    }
                     pb.start().waitFor();
                 } else {
                     System.out.println(command + ": command not found");
@@ -118,6 +143,18 @@ public class Main {
         }
 
         return args;
+    }
+
+    private static String extractStdoutRedirect(List<String> parts) {
+        for (int i = 0; i < parts.size(); i++) {
+            if (parts.get(i).equals(">") || parts.get(i).equals("1>")) {
+                String file = parts.get(i + 1);
+                parts.remove(i + 1);
+                parts.remove(i);
+                return file;
+            }
+        }
+        return null;
     }
 
     private static String findExecutable(String command) {

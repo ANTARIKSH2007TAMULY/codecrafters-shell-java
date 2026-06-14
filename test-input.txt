@@ -1,3 +1,0 @@
-'exe with "quotes"' testfile1
-"exe with 'single quotes'" testfile2
-exit
