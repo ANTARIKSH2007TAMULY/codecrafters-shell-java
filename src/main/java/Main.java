@@ -98,7 +98,12 @@ public class Main {
             } else if (command.equals("jobs")) {
                 for (int i = 0; i < jobs.size(); i++) {
                     Job job = jobs.get(i);
-                    String marker = (i == jobs.size() - 1) ? "+" : " ";
+                    String marker = " ";
+                    if (i == jobs.size() - 1) {
+                        marker = "+";
+                    } else if (i == jobs.size() - 2) {
+                        marker = "-";
+                    }
                     System.out.printf("[%d]%s  %-24s%s%n", job.id, marker, "Running", job.command);
                 }
             } else if (command.equals("type")) {
