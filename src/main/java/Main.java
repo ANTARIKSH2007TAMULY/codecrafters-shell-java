@@ -18,9 +18,9 @@ public class Main {
                 System.out.println(System.getProperty("user.dir"));
             } else if (input.startsWith("cd ")) {
                 String dir = input.substring(3);
-                Path path = Paths.get(dir);
+                Path path = Paths.get(System.getProperty("user.dir")).resolve(dir).normalize();
                 if (Files.isDirectory(path)) {
-                    System.setProperty("user.dir", path.toAbsolutePath().toString());
+                    System.setProperty("user.dir", path.toString());
                 } else {
                     System.out.println("cd: " + dir + ": No such file or directory");
                 }
