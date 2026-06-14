@@ -32,11 +32,13 @@ public class Main {
         final int id;
         final long pid;
         final String command;
+        final Process process;
 
-        Job(int id, long pid, String command) {
+        Job(int id, long pid, String command, Process process) {
             this.id = id;
             this.pid = pid;
             this.command = command;
+            this.process = process;
         }
     }
 
@@ -96,6 +98,7 @@ public class Main {
                     System.out.println("cd: " + dir + ": No such file or directory");
                 }
             } else if (command.equals("jobs")) {
+                List<Job> remaining = new ArrayList<>();
                 for (int i = 0; i < jobs.size(); i++) {
                     Job job = jobs.get(i);
                     String marker = " ";
@@ -104,8 +107,21 @@ public class Main {
                     } else if (i == jobs.size() - 2) {
                         marker = "-";
                     }
-                    System.out.printf("[%d]%s  %-24s%s%n", job.id, marker, "Running", job.command);
+                    boolean running = job.process.isAlive();
+                    String status = running ? "Running" : "Done";
+                    String displayCommand = job.command;
+                    if (!running) {
+                        if (displayCommand.endsWith(" &")) {
+                            displayCommand = displayCommand.substring(0, displayCommand.length() - 2);
+                        }
+                        job.process.waitFor();
+                    } else {
+                        remaining.add(job);
+                    }
+                    System.out.printf("[%d]%s  %-24s%s%n", job.id, marker, status, displayCommand);
                 }
+                jobs.clear();
+                jobs.addAll(remaining);
             } else if (command.equals("type")) {
                 String cmd = parts.get(1);
                 String output;
@@ -157,7 +173,7 @@ public class Main {
                     if (background) {
                         System.out.println("[" + nextJobId + "] " + process.pid());
                         System.out.flush();
-                        jobs.add(new Job(nextJobId, process.pid(), input.trim()));
+                        jobs.add(new Job(nextJobId, process.pid(), input.trim(), process));
                         nextJobId++;
                     } else {
                         process.waitFor();
