@@ -1,5 +1,7 @@
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -66,8 +68,12 @@ public class Main {
                 continue;
             }
             String command = parts.get(0);
+            List<List<String>> pipeline = splitPipeline(parts);
             if (command.equals("exit")) {
                 break;
+            }
+            if (pipeline.size() == 2) {
+                nextJobId = executeDualPipeline(pipeline.get(0), pipeline.get(1), outputRedirect, errorRedirect, background, jobs, input, nextJobId);
             } else if (command.equals("echo")) {
                 String output = String.join(" ", parts.subList(1, parts.size()));
                 if (errorRedirect != null && !errorRedirect.append) {
@@ -145,56 +151,7 @@ public class Main {
                 if (errorRedirect != null && !errorRedirect.append) {
                     Files.writeString(Paths.get(errorRedirect.file), "");
                 }
-            } else {
-                List<List<String>> pipeline = splitPipeline(parts);
-                if (pipeline.size() == 2) {
-                    List<String> left = pipeline.get(0);
-                    List<String> right = pipeline.get(1);
-                    String leftCmd = left.get(0);
-                    String rightCmd = right.get(0);
-                    if (findExecutable(leftCmd) == null) {
-                        System.out.println(leftCmd + ": command not found");
-                    } else if (findExecutable(rightCmd) == null) {
-                        System.out.println(rightCmd + ": command not found");
-                    } else {
-                        ProcessBuilder pb1 = new ProcessBuilder(left);
-                        pb1.redirectOutput(ProcessBuilder.Redirect.PIPE);
-                        pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
-                        Process p1 = pb1.start();
-
-                        ProcessBuilder pb2 = new ProcessBuilder(right);
-                        pb2.redirectInput(ProcessBuilder.Redirect.PIPE);
-                        configureOutputAndError(pb2, outputRedirect, errorRedirect);
-                        Process p2 = pb2.start();
-
-                        Thread pipeThread = new Thread(() -> {
-                            try (InputStream in = p1.getInputStream(); OutputStream out = p2.getOutputStream()) {
-                                byte[] buffer = new byte[8192];
-                                int n;
-                                while ((n = in.read(buffer)) != -1) {
-                                    out.write(buffer, 0, n);
-                                    out.flush();
-                                }
-                            } catch (Exception ignored) {
-                            }
-                        });
-                        pipeThread.start();
-
-                        if (background) {
-                            System.out.println("[" + nextJobId + "] " + p2.pid());
-                            System.out.flush();
-                            jobs.add(new Job(nextJobId, p2.pid(), input.trim(), p2));
-                            nextJobId++;
-                        } else {
-                            p2.waitFor();
-                            if (p1.isAlive()) {
-                                p1.destroyForcibly();
-                            }
-                            pipeThread.join();
-                            p1.waitFor();
-                        }
-                    }
-                } else if (findExecutable(command) != null) {
+            } else if (findExecutable(command) != null) {
                     ProcessBuilder pb = new ProcessBuilder(parts);
                     configureRedirects(pb, outputRedirect, errorRedirect);
                     Process process = pb.start();
@@ -206,9 +163,8 @@ public class Main {
                     } else {
                         process.waitFor();
                     }
-                } else {
-                    System.out.println(command + ": command not found");
-                }
+            } else {
+                System.out.println(command + ": command not found");
             }
         }
     }
@@ -273,6 +229,159 @@ public class Main {
         }
 
         return args;
+    }
+
+    private static boolean isBuiltin(String cmd) {
+        return cmd.equals("echo") || cmd.equals("type") || cmd.equals("pwd") || cmd.equals("jobs");
+    }
+
+    private static String getBuiltinOutput(List<String> parts) {
+        String cmd = parts.get(0);
+        if (cmd.equals("echo")) {
+            return String.join(" ", parts.subList(1, parts.size()));
+        } else if (cmd.equals("pwd")) {
+            return System.getProperty("user.dir");
+        } else if (cmd.equals("type")) {
+            String arg = parts.get(1);
+            if (arg.equals("echo") || arg.equals("exit") || arg.equals("type") || arg.equals("pwd") || arg.equals("cd") || arg.equals("jobs")) {
+                return arg + " is a shell builtin";
+            }
+            String foundPath = findExecutable(arg);
+            if (foundPath != null) {
+                return arg + " is " + foundPath;
+            }
+            return arg + ": not found";
+        }
+        return "";
+    }
+
+    private static void writeBuiltinOutput(List<String> parts, OutputStream out) throws Exception {
+        String output = getBuiltinOutput(parts);
+        if (!output.isEmpty()) {
+            out.write((output + "\n").getBytes());
+            out.flush();
+        }
+    }
+
+    private static void printBuiltinOutput(List<String> parts, StdoutRedirect outputRedirect) throws Exception {
+        String output = getBuiltinOutput(parts);
+        if (outputRedirect != null) {
+            writeStdout(outputRedirect, output + "\n");
+        } else if (!output.isEmpty()) {
+            System.out.println(output);
+        }
+    }
+
+    private static void pipeStream(InputStream in, OutputStream out) {
+        try (InputStream input = in; OutputStream output = out) {
+            byte[] buffer = new byte[8192];
+            int n;
+            while ((n = input.read(buffer)) != -1) {
+                output.write(buffer, 0, n);
+                output.flush();
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void drainStream(InputStream in) {
+        try (InputStream input = in) {
+            byte[] buffer = new byte[8192];
+            while (input.read(buffer) != -1) {
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static int executeDualPipeline(List<String> left, List<String> right, StdoutRedirect outputRedirect,
+            StderrRedirect errorRedirect, boolean background, List<Job> jobs, String input, int nextJobId) throws Exception {
+        String leftCmd = left.get(0);
+        String rightCmd = right.get(0);
+        boolean leftBuiltin = isBuiltin(leftCmd);
+        boolean rightBuiltin = isBuiltin(rightCmd);
+
+        if (!leftBuiltin && findExecutable(leftCmd) == null) {
+            System.out.println(leftCmd + ": command not found");
+            return nextJobId;
+        }
+        if (!rightBuiltin && findExecutable(rightCmd) == null) {
+            System.out.println(rightCmd + ": command not found");
+            return nextJobId;
+        }
+
+        if (leftBuiltin && rightBuiltin) {
+            PipedInputStream pipeIn = new PipedInputStream();
+            PipedOutputStream pipeOut = new PipedOutputStream(pipeIn);
+            Thread leftThread = new Thread(() -> {
+                try (OutputStream out = pipeOut) {
+                    writeBuiltinOutput(left, out);
+                } catch (Exception ignored) {
+                }
+            });
+            leftThread.start();
+            Thread drainThread = new Thread(() -> drainStream(pipeIn));
+            drainThread.setDaemon(true);
+            drainThread.start();
+            printBuiltinOutput(right, outputRedirect);
+            leftThread.join();
+            drainThread.join();
+        } else if (leftBuiltin) {
+            PipedInputStream pipeIn = new PipedInputStream();
+            PipedOutputStream pipeOut = new PipedOutputStream(pipeIn);
+            ProcessBuilder pb2 = new ProcessBuilder(right);
+            pb2.redirectInput(ProcessBuilder.Redirect.PIPE);
+            configureOutputAndError(pb2, outputRedirect, errorRedirect);
+            Process p2 = pb2.start();
+            Thread pipeThread = new Thread(() -> pipeStream(pipeIn, p2.getOutputStream()));
+            pipeThread.setDaemon(true);
+            pipeThread.start();
+            try (OutputStream out = pipeOut) {
+                writeBuiltinOutput(left, out);
+            }
+            if (background) {
+                System.out.println("[" + nextJobId + "] " + p2.pid());
+                System.out.flush();
+                jobs.add(new Job(nextJobId, p2.pid(), input.trim(), p2));
+                return nextJobId + 1;
+            }
+            p2.waitFor();
+            pipeThread.join();
+        } else if (rightBuiltin) {
+            ProcessBuilder pb1 = new ProcessBuilder(left);
+            pb1.redirectOutput(ProcessBuilder.Redirect.PIPE);
+            pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
+            Process p1 = pb1.start();
+            Thread drainThread = new Thread(() -> drainStream(p1.getInputStream()));
+            drainThread.setDaemon(true);
+            drainThread.start();
+            printBuiltinOutput(right, outputRedirect);
+            p1.waitFor();
+            drainThread.join();
+        } else {
+            ProcessBuilder pb1 = new ProcessBuilder(left);
+            pb1.redirectOutput(ProcessBuilder.Redirect.PIPE);
+            pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
+            Process p1 = pb1.start();
+            ProcessBuilder pb2 = new ProcessBuilder(right);
+            pb2.redirectInput(ProcessBuilder.Redirect.PIPE);
+            configureOutputAndError(pb2, outputRedirect, errorRedirect);
+            Process p2 = pb2.start();
+            Thread pipeThread = new Thread(() -> pipeStream(p1.getInputStream(), p2.getOutputStream()));
+            pipeThread.setDaemon(true);
+            pipeThread.start();
+            if (background) {
+                System.out.println("[" + nextJobId + "] " + p2.pid());
+                System.out.flush();
+                jobs.add(new Job(nextJobId, p2.pid(), input.trim(), p2));
+                return nextJobId + 1;
+            }
+            p2.waitFor();
+            if (p1.isAlive()) {
+                p1.destroyForcibly();
+            }
+            p1.waitFor();
+        }
+        return nextJobId;
     }
 
     private static List<List<String>> splitPipeline(List<String> parts) {
