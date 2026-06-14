@@ -30,6 +30,7 @@ public class Main {
 
     public static void main(String[] args) throws Exception {
         Scanner scanner = new Scanner(System.in);
+        int nextJobId = 1;
         while (true) {
             System.out.print("$ ");
             String input = scanner.nextLine();
@@ -39,6 +40,11 @@ public class Main {
             }
             StdoutRedirect outputRedirect = extractStdoutRedirect(parts);
             StderrRedirect errorRedirect = extractStderrRedirect(parts);
+            boolean background = false;
+            if (!parts.isEmpty() && parts.get(parts.size() - 1).equals("&")) {
+                parts.remove(parts.size() - 1);
+                background = true;
+            }
             if (parts.isEmpty()) {
                 continue;
             }
@@ -119,7 +125,13 @@ public class Main {
                     } else {
                         pb.redirectError(ProcessBuilder.Redirect.INHERIT);
                     }
-                    pb.start().waitFor();
+                    Process process = pb.start();
+                    if (background) {
+                        System.out.println("[" + nextJobId + "] " + process.pid());
+                        nextJobId++;
+                    } else {
+                        process.waitFor();
+                    }
                 } else {
                     System.out.println(command + ": command not found");
                 }
