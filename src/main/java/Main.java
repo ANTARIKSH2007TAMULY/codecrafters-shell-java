@@ -17,6 +17,7 @@ public class Main {
                 continue;
             }
             String outputFile = extractStdoutRedirect(parts);
+            String errorFile = extractStderrRedirect(parts);
             if (parts.isEmpty()) {
                 continue;
             }
@@ -25,6 +26,9 @@ public class Main {
                 break;
             } else if (command.equals("echo")) {
                 String output = String.join(" ", parts.subList(1, parts.size()));
+                if (errorFile != null) {
+                    Files.writeString(Paths.get(errorFile), "");
+                }
                 if (outputFile != null) {
                     Files.writeString(Paths.get(outputFile), output + "\n");
                 } else {
@@ -32,6 +36,9 @@ public class Main {
                 }
             } else if (command.equals("pwd")) {
                 String dir = System.getProperty("user.dir");
+                if (errorFile != null) {
+                    Files.writeString(Paths.get(errorFile), "");
+                }
                 if (outputFile != null) {
                     Files.writeString(Paths.get(outputFile), dir + "\n");
                 } else {
@@ -66,14 +73,21 @@ public class Main {
                 } else {
                     System.out.println(output);
                 }
+                if (errorFile != null) {
+                    Files.writeString(Paths.get(errorFile), "");
+                }
             } else {
                 if (findExecutable(command) != null) {
                     ProcessBuilder pb = new ProcessBuilder(parts);
                     if (outputFile != null) {
                         pb.redirectOutput(new File(outputFile));
-                        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
                     } else {
-                        pb.inheritIO();
+                        pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+                    }
+                    if (errorFile != null) {
+                        pb.redirectError(new File(errorFile));
+                    } else {
+                        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
                     }
                     pb.start().waitFor();
                 } else {
@@ -148,6 +162,18 @@ public class Main {
     private static String extractStdoutRedirect(List<String> parts) {
         for (int i = 0; i < parts.size(); i++) {
             if (parts.get(i).equals(">") || parts.get(i).equals("1>")) {
+                String file = parts.get(i + 1);
+                parts.remove(i + 1);
+                parts.remove(i);
+                return file;
+            }
+        }
+        return null;
+    }
+
+    private static String extractStderrRedirect(List<String> parts) {
+        for (int i = 0; i < parts.size(); i++) {
+            if (parts.get(i).equals("2>")) {
                 String file = parts.get(i + 1);
                 parts.remove(i + 1);
                 parts.remove(i);
