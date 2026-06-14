@@ -61,18 +61,27 @@ public class Main {
     private static List<String> parseInput(String input) {
         List<String> args = new ArrayList<>();
         StringBuilder current = new StringBuilder();
-        boolean inQuotes = false;
+        boolean inSingleQuotes = false;
+        boolean inDoubleQuotes = false;
 
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
-            if (inQuotes) {
+            if (inSingleQuotes) {
                 if (c == '\'') {
-                    inQuotes = false;
+                    inSingleQuotes = false;
+                } else {
+                    current.append(c);
+                }
+            } else if (inDoubleQuotes) {
+                if (c == '"') {
+                    inDoubleQuotes = false;
                 } else {
                     current.append(c);
                 }
             } else if (c == '\'') {
-                inQuotes = true;
+                inSingleQuotes = true;
+            } else if (c == '"') {
+                inDoubleQuotes = true;
             } else if (Character.isWhitespace(c)) {
                 if (current.length() > 0) {
                     args.add(current.toString());
