@@ -28,9 +28,22 @@ public class Main {
         }
     }
 
+    private static class Job {
+        final int id;
+        final long pid;
+        final String command;
+
+        Job(int id, long pid, String command) {
+            this.id = id;
+            this.pid = pid;
+            this.command = command;
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         Scanner scanner = new Scanner(System.in);
         int nextJobId = 1;
+        List<Job> jobs = new ArrayList<>();
         while (true) {
             System.out.print("$ ");
             String input = scanner.nextLine();
@@ -83,6 +96,11 @@ public class Main {
                     System.out.println("cd: " + dir + ": No such file or directory");
                 }
             } else if (command.equals("jobs")) {
+                for (int i = 0; i < jobs.size(); i++) {
+                    Job job = jobs.get(i);
+                    String marker = (i == jobs.size() - 1) ? "+" : " ";
+                    System.out.printf("[%d]%s  %-24s%s%n", job.id, marker, "Running", job.command);
+                }
             } else if (command.equals("type")) {
                 String cmd = parts.get(1);
                 String output;
@@ -134,6 +152,7 @@ public class Main {
                     if (background) {
                         System.out.println("[" + nextJobId + "] " + process.pid());
                         System.out.flush();
+                        jobs.add(new Job(nextJobId, process.pid(), input.trim()));
                         nextJobId++;
                     } else {
                         process.waitFor();
