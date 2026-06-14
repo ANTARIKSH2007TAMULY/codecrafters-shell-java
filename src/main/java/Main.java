@@ -51,6 +51,7 @@ public class Main {
         int nextJobId = 1;
         List<Job> jobs = new ArrayList<>();
         while (true) {
+            reapCompletedJobs(jobs);
             System.out.print("$ ");
             String input = scanner.nextLine();
             List<String> parts = parseInput(input);
@@ -106,30 +107,7 @@ public class Main {
                     System.out.println("cd: " + dir + ": No such file or directory");
                 }
             } else if (command.equals("jobs")) {
-                List<Job> remaining = new ArrayList<>();
-                for (int i = 0; i < jobs.size(); i++) {
-                    Job job = jobs.get(i);
-                    String marker = " ";
-                    if (i == jobs.size() - 1) {
-                        marker = "+";
-                    } else if (i == jobs.size() - 2) {
-                        marker = "-";
-                    }
-                    boolean running = job.process.isAlive();
-                    String status = running ? "Running" : "Done";
-                    String displayCommand = job.command;
-                    if (!running) {
-                        if (displayCommand.endsWith(" &")) {
-                            displayCommand = displayCommand.substring(0, displayCommand.length() - 2);
-                        }
-                        job.process.waitFor();
-                    } else {
-                        remaining.add(job);
-                    }
-                    System.out.printf("[%d]%s  %-24s%s%n", job.id, marker, status, displayCommand);
-                }
-                jobs.clear();
-                jobs.addAll(remaining);
+                listJobs(jobs);
             } else if (command.equals("type")) {
                 String cmd = parts.get(1);
                 String output;
@@ -167,6 +145,63 @@ public class Main {
                 System.out.println(command + ": command not found");
             }
         }
+    }
+
+    private static String getJobMarker(int jobId, List<Job> jobs) {
+        int maxId = -1;
+        int secondMaxId = -1;
+        for (Job job : jobs) {
+            if (job.id > maxId) {
+                secondMaxId = maxId;
+                maxId = job.id;
+            } else if (job.id > secondMaxId) {
+                secondMaxId = job.id;
+            }
+        }
+        if (jobId == maxId) {
+            return "+";
+        } else if (jobId == secondMaxId) {
+            return "-";
+        }
+        return " ";
+    }
+
+    private static String displayCommandForDone(Job job) {
+        String displayCommand = job.command;
+        if (displayCommand.endsWith(" &")) {
+            displayCommand = displayCommand.substring(0, displayCommand.length() - 2);
+        }
+        return displayCommand;
+    }
+
+    private static void reapCompletedJobs(List<Job> jobs) throws Exception {
+        List<Job> remaining = new ArrayList<>();
+        for (Job job : jobs) {
+            if (!job.process.isAlive()) {
+                System.out.printf("[%d]%s  %-24s%s%n", job.id, getJobMarker(job.id, jobs), "Done", displayCommandForDone(job));
+                job.process.waitFor();
+            } else {
+                remaining.add(job);
+            }
+        }
+        jobs.clear();
+        jobs.addAll(remaining);
+    }
+
+    private static void listJobs(List<Job> jobs) throws Exception {
+        List<Job> remaining = new ArrayList<>();
+        for (Job job : jobs) {
+            boolean running = job.process.isAlive();
+            if (running) {
+                System.out.printf("[%d]%s  %-24s%s%n", job.id, getJobMarker(job.id, jobs), "Running", job.command);
+                remaining.add(job);
+            } else {
+                System.out.printf("[%d]%s  %-24s%s%n", job.id, getJobMarker(job.id, jobs), "Done", displayCommandForDone(job));
+                job.process.waitFor();
+            }
+        }
+        jobs.clear();
+        jobs.addAll(remaining);
     }
 
     private static List<String> parseInput(String input) {
