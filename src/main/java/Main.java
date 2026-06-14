@@ -76,10 +76,11 @@ public class Main {
                 } else {
                     System.out.println("cd: " + dir + ": No such file or directory");
                 }
+            } else if (command.equals("jobs")) {
             } else if (command.equals("type")) {
                 String cmd = parts.get(1);
                 String output;
-                if (cmd.equals("echo") || cmd.equals("exit") || cmd.equals("type") || cmd.equals("pwd") || cmd.equals("cd")) {
+                if (cmd.equals("echo") || cmd.equals("exit") || cmd.equals("type") || cmd.equals("pwd") || cmd.equals("cd") || cmd.equals("jobs")) {
                     output = cmd + " is a shell builtin";
                 } else {
                     String foundPath = findExecutable(cmd);
