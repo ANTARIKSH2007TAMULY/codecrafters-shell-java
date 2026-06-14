@@ -72,8 +72,8 @@ public class Main {
             if (command.equals("exit")) {
                 break;
             }
-            if (pipeline.size() == 2) {
-                nextJobId = executeDualPipeline(pipeline.get(0), pipeline.get(1), outputRedirect, errorRedirect, background, jobs, input, nextJobId);
+            if (pipeline.size() >= 2) {
+                nextJobId = executePipeline(pipeline, outputRedirect, errorRedirect, background, jobs, input, nextJobId);
             } else if (command.equals("echo")) {
                 String output = String.join(" ", parts.subList(1, parts.size()));
                 if (errorRedirect != null && !errorRedirect.append) {
@@ -152,17 +152,17 @@ public class Main {
                     Files.writeString(Paths.get(errorRedirect.file), "");
                 }
             } else if (findExecutable(command) != null) {
-                    ProcessBuilder pb = new ProcessBuilder(parts);
-                    configureRedirects(pb, outputRedirect, errorRedirect);
-                    Process process = pb.start();
-                    if (background) {
-                        System.out.println("[" + nextJobId + "] " + process.pid());
-                        System.out.flush();
-                        jobs.add(new Job(nextJobId, process.pid(), input.trim(), process));
-                        nextJobId++;
-                    } else {
-                        process.waitFor();
-                    }
+                ProcessBuilder pb = new ProcessBuilder(parts);
+                configureRedirects(pb, outputRedirect, errorRedirect);
+                Process process = pb.start();
+                if (background) {
+                    System.out.println("[" + nextJobId + "] " + process.pid());
+                    System.out.flush();
+                    jobs.add(new Job(nextJobId, process.pid(), input.trim(), process));
+                    nextJobId++;
+                } else {
+                    process.waitFor();
+                }
             } else {
                 System.out.println(command + ": command not found");
             }
@@ -291,6 +291,72 @@ public class Main {
             }
         } catch (Exception ignored) {
         }
+    }
+
+    private static int executePipeline(List<List<String>> stages, StdoutRedirect outputRedirect,
+            StderrRedirect errorRedirect, boolean background, List<Job> jobs, String input, int nextJobId) throws Exception {
+        boolean hasBuiltin = false;
+        for (List<String> stage : stages) {
+            if (isBuiltin(stage.get(0))) {
+                hasBuiltin = true;
+                break;
+            }
+        }
+        if (hasBuiltin && stages.size() == 2) {
+            return executeDualPipeline(stages.get(0), stages.get(1), outputRedirect, errorRedirect, background, jobs, input, nextJobId);
+        }
+        return executeMultiStagePipeline(stages, outputRedirect, errorRedirect, background, jobs, input, nextJobId);
+    }
+
+    private static int executeMultiStagePipeline(List<List<String>> stages, StdoutRedirect outputRedirect,
+            StderrRedirect errorRedirect, boolean background, List<Job> jobs, String input, int nextJobId) throws Exception {
+        int n = stages.size();
+        for (List<String> stage : stages) {
+            String cmd = stage.get(0);
+            if (!isBuiltin(cmd) && findExecutable(cmd) == null) {
+                System.out.println(cmd + ": command not found");
+                return nextJobId;
+            }
+        }
+
+        Process[] processes = new Process[n];
+        for (int i = 0; i < n; i++) {
+            ProcessBuilder pb = new ProcessBuilder(stages.get(i));
+            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+            if (i < n - 1) {
+                pb.redirectOutput(ProcessBuilder.Redirect.PIPE);
+            } else {
+                configureOutputAndError(pb, outputRedirect, errorRedirect);
+            }
+            if (i > 0) {
+                pb.redirectInput(ProcessBuilder.Redirect.PIPE);
+            }
+            processes[i] = pb.start();
+        }
+
+        for (int i = 0; i < n - 1; i++) {
+            final int idx = i;
+            Thread pipeThread = new Thread(() -> pipeStream(processes[idx].getInputStream(), processes[idx + 1].getOutputStream()));
+            pipeThread.setDaemon(true);
+            pipeThread.start();
+        }
+
+        Process last = processes[n - 1];
+        if (background) {
+            System.out.println("[" + nextJobId + "] " + last.pid());
+            System.out.flush();
+            jobs.add(new Job(nextJobId, last.pid(), input.trim(), last));
+            return nextJobId + 1;
+        }
+
+        last.waitFor();
+        for (int i = 0; i < n - 1; i++) {
+            if (processes[i].isAlive()) {
+                processes[i].destroyForcibly();
+            }
+            processes[i].waitFor();
+        }
+        return nextJobId;
     }
 
     private static int executeDualPipeline(List<String> left, List<String> right, StdoutRedirect outputRedirect,
