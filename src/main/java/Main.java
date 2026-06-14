@@ -78,6 +78,11 @@ public class Main {
                 } else {
                     current.append(c);
                 }
+            } else if (c == '\\') {
+                if (i + 1 < input.length()) {
+                    i++;
+                    current.append(input.charAt(i));
+                }
             } else if (c == '\'') {
                 inSingleQuotes = true;
             } else if (c == '"') {
