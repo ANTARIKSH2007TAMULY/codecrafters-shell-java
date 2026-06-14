@@ -18,6 +18,16 @@ public class Main {
         }
     }
 
+    private static class StderrRedirect {
+        final String file;
+        final boolean append;
+
+        StderrRedirect(String file, boolean append) {
+            this.file = file;
+            this.append = append;
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         Scanner scanner = new Scanner(System.in);
         while (true) {
@@ -28,7 +38,7 @@ public class Main {
                 continue;
             }
             StdoutRedirect outputRedirect = extractStdoutRedirect(parts);
-            String errorFile = extractStderrRedirect(parts);
+            StderrRedirect errorRedirect = extractStderrRedirect(parts);
             if (parts.isEmpty()) {
                 continue;
             }
@@ -37,8 +47,8 @@ public class Main {
                 break;
             } else if (command.equals("echo")) {
                 String output = String.join(" ", parts.subList(1, parts.size()));
-                if (errorFile != null) {
-                    Files.writeString(Paths.get(errorFile), "");
+                if (errorRedirect != null && !errorRedirect.append) {
+                    Files.writeString(Paths.get(errorRedirect.file), "");
                 }
                 if (outputRedirect != null) {
                     writeStdout(outputRedirect, output + "\n");
@@ -47,8 +57,8 @@ public class Main {
                 }
             } else if (command.equals("pwd")) {
                 String dir = System.getProperty("user.dir");
-                if (errorFile != null) {
-                    Files.writeString(Paths.get(errorFile), "");
+                if (errorRedirect != null && !errorRedirect.append) {
+                    Files.writeString(Paths.get(errorRedirect.file), "");
                 }
                 if (outputRedirect != null) {
                     writeStdout(outputRedirect, dir + "\n");
@@ -84,8 +94,8 @@ public class Main {
                 } else {
                     System.out.println(output);
                 }
-                if (errorFile != null) {
-                    Files.writeString(Paths.get(errorFile), "");
+                if (errorRedirect != null && !errorRedirect.append) {
+                    Files.writeString(Paths.get(errorRedirect.file), "");
                 }
             } else {
                 if (findExecutable(command) != null) {
@@ -99,8 +109,12 @@ public class Main {
                     } else {
                         pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
                     }
-                    if (errorFile != null) {
-                        pb.redirectError(new File(errorFile));
+                    if (errorRedirect != null) {
+                        if (errorRedirect.append) {
+                            pb.redirectError(ProcessBuilder.Redirect.appendTo(new File(errorRedirect.file)));
+                        } else {
+                            pb.redirectError(new File(errorRedirect.file));
+                        }
                     } else {
                         pb.redirectError(ProcessBuilder.Redirect.INHERIT);
                     }
@@ -200,13 +214,19 @@ public class Main {
         }
     }
 
-    private static String extractStderrRedirect(List<String> parts) {
+    private static StderrRedirect extractStderrRedirect(List<String> parts) {
         for (int i = 0; i < parts.size(); i++) {
-            if (parts.get(i).equals("2>")) {
+            String token = parts.get(i);
+            if (token.equals("2>")) {
                 String file = parts.get(i + 1);
                 parts.remove(i + 1);
                 parts.remove(i);
-                return file;
+                return new StderrRedirect(file, false);
+            } else if (token.equals("2>>")) {
+                String file = parts.get(i + 1);
+                parts.remove(i + 1);
+                parts.remove(i);
+                return new StderrRedirect(file, true);
             }
         }
         return null;
