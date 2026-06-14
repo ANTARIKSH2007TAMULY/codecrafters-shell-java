@@ -2,11 +2,22 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 
 public class Main {
+    private static class StdoutRedirect {
+        final String file;
+        final boolean append;
+
+        StdoutRedirect(String file, boolean append) {
+            this.file = file;
+            this.append = append;
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         Scanner scanner = new Scanner(System.in);
         while (true) {
@@ -16,7 +27,7 @@ public class Main {
             if (parts.isEmpty()) {
                 continue;
             }
-            String outputFile = extractStdoutRedirect(parts);
+            StdoutRedirect outputRedirect = extractStdoutRedirect(parts);
             String errorFile = extractStderrRedirect(parts);
             if (parts.isEmpty()) {
                 continue;
@@ -29,8 +40,8 @@ public class Main {
                 if (errorFile != null) {
                     Files.writeString(Paths.get(errorFile), "");
                 }
-                if (outputFile != null) {
-                    Files.writeString(Paths.get(outputFile), output + "\n");
+                if (outputRedirect != null) {
+                    writeStdout(outputRedirect, output + "\n");
                 } else {
                     System.out.println(output);
                 }
@@ -39,8 +50,8 @@ public class Main {
                 if (errorFile != null) {
                     Files.writeString(Paths.get(errorFile), "");
                 }
-                if (outputFile != null) {
-                    Files.writeString(Paths.get(outputFile), dir + "\n");
+                if (outputRedirect != null) {
+                    writeStdout(outputRedirect, dir + "\n");
                 } else {
                     System.out.println(dir);
                 }
@@ -68,8 +79,8 @@ public class Main {
                         output = cmd + ": not found";
                     }
                 }
-                if (outputFile != null) {
-                    Files.writeString(Paths.get(outputFile), output + "\n");
+                if (outputRedirect != null) {
+                    writeStdout(outputRedirect, output + "\n");
                 } else {
                     System.out.println(output);
                 }
@@ -79,8 +90,12 @@ public class Main {
             } else {
                 if (findExecutable(command) != null) {
                     ProcessBuilder pb = new ProcessBuilder(parts);
-                    if (outputFile != null) {
-                        pb.redirectOutput(new File(outputFile));
+                    if (outputRedirect != null) {
+                        if (outputRedirect.append) {
+                            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(new File(outputRedirect.file)));
+                        } else {
+                            pb.redirectOutput(new File(outputRedirect.file));
+                        }
                     } else {
                         pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
                     }
@@ -159,16 +174,30 @@ public class Main {
         return args;
     }
 
-    private static String extractStdoutRedirect(List<String> parts) {
+    private static StdoutRedirect extractStdoutRedirect(List<String> parts) {
         for (int i = 0; i < parts.size(); i++) {
-            if (parts.get(i).equals(">") || parts.get(i).equals("1>")) {
+            String token = parts.get(i);
+            if (token.equals(">") || token.equals("1>")) {
                 String file = parts.get(i + 1);
                 parts.remove(i + 1);
                 parts.remove(i);
-                return file;
+                return new StdoutRedirect(file, false);
+            } else if (token.equals(">>") || token.equals("1>>")) {
+                String file = parts.get(i + 1);
+                parts.remove(i + 1);
+                parts.remove(i);
+                return new StdoutRedirect(file, true);
             }
         }
         return null;
+    }
+
+    private static void writeStdout(StdoutRedirect redirect, String content) throws Exception {
+        if (redirect.append) {
+            Files.writeString(Paths.get(redirect.file), content, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } else {
+            Files.writeString(Paths.get(redirect.file), content);
+        }
     }
 
     private static String extractStderrRedirect(List<String> parts) {
