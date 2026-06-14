@@ -1,0 +1,11 @@
+#!/bin/sh
+echo "Program was passed $# args (including program name)."
+i=0
+for arg in "$@"; do
+  if [ $i -eq 0 ]; then
+    echo "Arg #$i (program name): $arg"
+  else
+    echo "Arg #$i: $arg"
+  fi
+  i=$((i+1))
+done

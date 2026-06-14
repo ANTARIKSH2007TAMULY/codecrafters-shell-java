@@ -19,17 +19,7 @@ public class Main {
                 if (command.equals("echo") || command.equals("exit") || command.equals("type")) {
                     System.out.println(command + " is a shell builtin");
                 } else {
-                    String pathEnv = System.getenv("PATH");
-                    String foundPath = null;
-                    if (pathEnv != null) {
-                        for (String dir : pathEnv.split(File.pathSeparator)) {
-                            Path filePath = Paths.get(dir, command);
-                            if (Files.exists(filePath) && Files.isExecutable(filePath)) {
-                                foundPath = filePath.toString();
-                                break;
-                            }
-                        }
-                    }
+                    String foundPath = findExecutable(command);
                     if (foundPath != null) {
                         System.out.println(command + " is " + foundPath);
                     } else {
@@ -37,8 +27,30 @@ public class Main {
                     }
                 }
             } else {
-                System.out.println(input + ": command not found");
+                String[] parts = input.split(" ");
+                String command = parts[0];
+                if (findExecutable(command) != null) {
+                    ProcessBuilder pb = new ProcessBuilder(parts);
+                    pb.inheritIO();
+                    pb.start().waitFor();
+                } else {
+                    System.out.println(command + ": command not found");
+                }
             }
         }
+    }
+
+    private static String findExecutable(String command) {
+        String pathEnv = System.getenv("PATH");
+        if (pathEnv == null) {
+            return null;
+        }
+        for (String dir : pathEnv.split(File.pathSeparator)) {
+            Path filePath = Paths.get(dir, command);
+            if (Files.exists(filePath) && Files.isExecutable(filePath)) {
+                return filePath.toString();
+            }
+        }
+        return null;
     }
 }
