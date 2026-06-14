@@ -107,27 +107,33 @@ public class Main {
             } else {
                 if (findExecutable(command) != null) {
                     ProcessBuilder pb = new ProcessBuilder(parts);
-                    if (outputRedirect != null) {
-                        if (outputRedirect.append) {
-                            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(new File(outputRedirect.file)));
-                        } else {
-                            pb.redirectOutput(new File(outputRedirect.file));
-                        }
+                    if (outputRedirect == null && errorRedirect == null) {
+                        pb.inheritIO();
                     } else {
-                        pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-                    }
-                    if (errorRedirect != null) {
-                        if (errorRedirect.append) {
-                            pb.redirectError(ProcessBuilder.Redirect.appendTo(new File(errorRedirect.file)));
+                        pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+                        if (outputRedirect != null) {
+                            if (outputRedirect.append) {
+                                pb.redirectOutput(ProcessBuilder.Redirect.appendTo(new File(outputRedirect.file)));
+                            } else {
+                                pb.redirectOutput(new File(outputRedirect.file));
+                            }
                         } else {
-                            pb.redirectError(new File(errorRedirect.file));
+                            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
                         }
-                    } else {
-                        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+                        if (errorRedirect != null) {
+                            if (errorRedirect.append) {
+                                pb.redirectError(ProcessBuilder.Redirect.appendTo(new File(errorRedirect.file)));
+                            } else {
+                                pb.redirectError(new File(errorRedirect.file));
+                            }
+                        } else {
+                            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+                        }
                     }
                     Process process = pb.start();
                     if (background) {
                         System.out.println("[" + nextJobId + "] " + process.pid());
+                        System.out.flush();
                         nextJobId++;
                     } else {
                         process.waitFor();
