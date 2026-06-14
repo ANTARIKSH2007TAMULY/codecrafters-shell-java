@@ -2,6 +2,8 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 
 public class Main {
@@ -10,14 +12,19 @@ public class Main {
         while (true) {
             System.out.print("$ ");
             String input = scanner.nextLine();
-            if (input.equals("exit")) {
+            List<String> parts = parseInput(input);
+            if (parts.isEmpty()) {
+                continue;
+            }
+            String command = parts.get(0);
+            if (command.equals("exit")) {
                 break;
-            } else if (input.startsWith("echo ")) {
-                System.out.println(input.substring(5));
-            } else if (input.equals("pwd")) {
+            } else if (command.equals("echo")) {
+                System.out.println(String.join(" ", parts.subList(1, parts.size())));
+            } else if (command.equals("pwd")) {
                 System.out.println(System.getProperty("user.dir"));
-            } else if (input.startsWith("cd ")) {
-                String dir = input.substring(3);
+            } else if (command.equals("cd")) {
+                String dir = parts.get(1);
                 if (dir.startsWith("~")) {
                     dir = System.getenv("HOME") + dir.substring(1);
                 }
@@ -27,21 +34,19 @@ public class Main {
                 } else {
                     System.out.println("cd: " + dir + ": No such file or directory");
                 }
-            } else if (input.startsWith("type ")) {
-                String command = input.substring(5);
-                if (command.equals("echo") || command.equals("exit") || command.equals("type") || command.equals("pwd") || command.equals("cd")) {
-                    System.out.println(command + " is a shell builtin");
+            } else if (command.equals("type")) {
+                String cmd = parts.get(1);
+                if (cmd.equals("echo") || cmd.equals("exit") || cmd.equals("type") || cmd.equals("pwd") || cmd.equals("cd")) {
+                    System.out.println(cmd + " is a shell builtin");
                 } else {
-                    String foundPath = findExecutable(command);
+                    String foundPath = findExecutable(cmd);
                     if (foundPath != null) {
-                        System.out.println(command + " is " + foundPath);
+                        System.out.println(cmd + " is " + foundPath);
                     } else {
-                        System.out.println(command + ": not found");
+                        System.out.println(cmd + ": not found");
                     }
                 }
             } else {
-                String[] parts = input.split(" ");
-                String command = parts[0];
                 if (findExecutable(command) != null) {
                     ProcessBuilder pb = new ProcessBuilder(parts);
                     pb.inheritIO();
@@ -51,6 +56,38 @@ public class Main {
                 }
             }
         }
+    }
+
+    private static List<String> parseInput(String input) {
+        List<String> args = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (inQuotes) {
+                if (c == '\'') {
+                    inQuotes = false;
+                } else {
+                    current.append(c);
+                }
+            } else if (c == '\'') {
+                inQuotes = true;
+            } else if (Character.isWhitespace(c)) {
+                if (current.length() > 0) {
+                    args.add(current.toString());
+                    current = new StringBuilder();
+                }
+            } else {
+                current.append(c);
+            }
+        }
+
+        if (current.length() > 0) {
+            args.add(current.toString());
+        }
+
+        return args;
     }
 
     private static String findExecutable(String command) {
