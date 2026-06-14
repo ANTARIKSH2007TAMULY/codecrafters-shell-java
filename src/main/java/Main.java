@@ -18,6 +18,9 @@ public class Main {
                 System.out.println(System.getProperty("user.dir"));
             } else if (input.startsWith("cd ")) {
                 String dir = input.substring(3);
+                if (dir.startsWith("~")) {
+                    dir = System.getenv("HOME") + dir.substring(1);
+                }
                 Path path = Paths.get(System.getProperty("user.dir")).resolve(dir).normalize();
                 if (Files.isDirectory(path)) {
                     System.setProperty("user.dir", path.toString());
