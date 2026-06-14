@@ -73,7 +73,23 @@ public class Main {
                     current.append(c);
                 }
             } else if (inDoubleQuotes) {
-                if (c == '"') {
+                if (c == '\\') {
+                    if (i + 1 < input.length()) {
+                        char next = input.charAt(i + 1);
+                        if (next == '"' || next == '\\' || next == '$' || next == '`' || next == '\n') {
+                            i++;
+                            if (next != '\n') {
+                                current.append(next);
+                            }
+                        } else {
+                            current.append(c);
+                            current.append(next);
+                            i++;
+                        }
+                    } else {
+                        current.append(c);
+                    }
+                } else if (c == '"') {
                     inDoubleQuotes = false;
                 } else {
                     current.append(c);
