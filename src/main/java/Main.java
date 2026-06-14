@@ -1,3 +1,5 @@
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -144,31 +146,57 @@ public class Main {
                     Files.writeString(Paths.get(errorRedirect.file), "");
                 }
             } else {
-                if (findExecutable(command) != null) {
-                    ProcessBuilder pb = new ProcessBuilder(parts);
-                    if (outputRedirect == null && errorRedirect == null) {
-                        pb.inheritIO();
+                List<List<String>> pipeline = splitPipeline(parts);
+                if (pipeline.size() == 2) {
+                    List<String> left = pipeline.get(0);
+                    List<String> right = pipeline.get(1);
+                    String leftCmd = left.get(0);
+                    String rightCmd = right.get(0);
+                    if (findExecutable(leftCmd) == null) {
+                        System.out.println(leftCmd + ": command not found");
+                    } else if (findExecutable(rightCmd) == null) {
+                        System.out.println(rightCmd + ": command not found");
                     } else {
-                        pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
-                        if (outputRedirect != null) {
-                            if (outputRedirect.append) {
-                                pb.redirectOutput(ProcessBuilder.Redirect.appendTo(new File(outputRedirect.file)));
-                            } else {
-                                pb.redirectOutput(new File(outputRedirect.file));
+                        ProcessBuilder pb1 = new ProcessBuilder(left);
+                        pb1.redirectOutput(ProcessBuilder.Redirect.PIPE);
+                        pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
+                        Process p1 = pb1.start();
+
+                        ProcessBuilder pb2 = new ProcessBuilder(right);
+                        pb2.redirectInput(ProcessBuilder.Redirect.PIPE);
+                        configureOutputAndError(pb2, outputRedirect, errorRedirect);
+                        Process p2 = pb2.start();
+
+                        Thread pipeThread = new Thread(() -> {
+                            try (InputStream in = p1.getInputStream(); OutputStream out = p2.getOutputStream()) {
+                                byte[] buffer = new byte[8192];
+                                int n;
+                                while ((n = in.read(buffer)) != -1) {
+                                    out.write(buffer, 0, n);
+                                    out.flush();
+                                }
+                            } catch (Exception ignored) {
                             }
+                        });
+                        pipeThread.start();
+
+                        if (background) {
+                            System.out.println("[" + nextJobId + "] " + p2.pid());
+                            System.out.flush();
+                            jobs.add(new Job(nextJobId, p2.pid(), input.trim(), p2));
+                            nextJobId++;
                         } else {
-                            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-                        }
-                        if (errorRedirect != null) {
-                            if (errorRedirect.append) {
-                                pb.redirectError(ProcessBuilder.Redirect.appendTo(new File(errorRedirect.file)));
-                            } else {
-                                pb.redirectError(new File(errorRedirect.file));
+                            p2.waitFor();
+                            if (p1.isAlive()) {
+                                p1.destroyForcibly();
                             }
-                        } else {
-                            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+                            pipeThread.join();
+                            p1.waitFor();
                         }
                     }
+                } else if (findExecutable(command) != null) {
+                    ProcessBuilder pb = new ProcessBuilder(parts);
+                    configureRedirects(pb, outputRedirect, errorRedirect);
                     Process process = pb.start();
                     if (background) {
                         System.out.println("[" + nextJobId + "] " + process.pid());
@@ -245,6 +273,51 @@ public class Main {
         }
 
         return args;
+    }
+
+    private static List<List<String>> splitPipeline(List<String> parts) {
+        List<List<String>> commands = new ArrayList<>();
+        List<String> current = new ArrayList<>();
+        for (String part : parts) {
+            if (part.equals("|")) {
+                commands.add(current);
+                current = new ArrayList<>();
+            } else {
+                current.add(part);
+            }
+        }
+        commands.add(current);
+        return commands;
+    }
+
+    private static void configureRedirects(ProcessBuilder pb, StdoutRedirect outputRedirect, StderrRedirect errorRedirect) {
+        if (outputRedirect == null && errorRedirect == null) {
+            pb.inheritIO();
+        } else {
+            pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+            configureOutputAndError(pb, outputRedirect, errorRedirect);
+        }
+    }
+
+    private static void configureOutputAndError(ProcessBuilder pb, StdoutRedirect outputRedirect, StderrRedirect errorRedirect) {
+        if (outputRedirect != null) {
+            if (outputRedirect.append) {
+                pb.redirectOutput(ProcessBuilder.Redirect.appendTo(new File(outputRedirect.file)));
+            } else {
+                pb.redirectOutput(new File(outputRedirect.file));
+            }
+        } else {
+            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+        }
+        if (errorRedirect != null) {
+            if (errorRedirect.append) {
+                pb.redirectError(ProcessBuilder.Redirect.appendTo(new File(errorRedirect.file)));
+            } else {
+                pb.redirectError(new File(errorRedirect.file));
+            }
+        } else {
+            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+        }
     }
 
     private static StdoutRedirect extractStdoutRedirect(List<String> parts) {
