@@ -67,6 +67,7 @@ public class Main {
         Scanner scanner = new Scanner(System.in);
         int nextJobId = 1;
         List<Job> jobs = new ArrayList<>();
+        List<String> history = new ArrayList<>();
         while (true) {
             reapCompletedJobs(jobs);
             nextJobId = smallestAvailableJobId(jobs);
@@ -76,6 +77,7 @@ public class Main {
             if (parts.isEmpty()) {
                 continue;
             }
+            history.add(input);
             StdoutRedirect outputRedirect = extractStdoutRedirect(parts);
             StderrRedirect errorRedirect = extractStderrRedirect(parts);
             boolean background = false;
@@ -126,10 +128,15 @@ public class Main {
                 }
             } else if (command.equals("jobs")) {
                 listJobs(jobs);
+            } else if (command.equals("history")) {
+                for (int i = 0; i < history.size(); i++) {
+                    System.out.printf("%5d  %s%n", i + 1, history.get(i));
+                }
             } else if (command.equals("type")) {
                 String cmd = parts.get(1);
                 String output;
-                if (cmd.equals("echo") || cmd.equals("exit") || cmd.equals("type") || cmd.equals("pwd") || cmd.equals("cd") || cmd.equals("jobs")) {
+                if (cmd.equals("echo") || cmd.equals("exit") || cmd.equals("type") || cmd.equals("pwd")
+                        || cmd.equals("cd") || cmd.equals("jobs") || cmd.equals("history")) {
                     output = cmd + " is a shell builtin";
                 } else {
                     String foundPath = findExecutable(cmd);
@@ -285,7 +292,8 @@ public class Main {
     }
 
     private static boolean isBuiltin(String cmd) {
-        return cmd.equals("echo") || cmd.equals("type") || cmd.equals("pwd") || cmd.equals("jobs");
+        return cmd.equals("echo") || cmd.equals("type") || cmd.equals("pwd") || cmd.equals("jobs")
+                || cmd.equals("history");
     }
 
     private static String getBuiltinOutput(List<String> parts) {
@@ -296,7 +304,8 @@ public class Main {
             return System.getProperty("user.dir");
         } else if (cmd.equals("type")) {
             String arg = parts.get(1);
-            if (arg.equals("echo") || arg.equals("exit") || arg.equals("type") || arg.equals("pwd") || arg.equals("cd") || arg.equals("jobs")) {
+            if (arg.equals("echo") || arg.equals("exit") || arg.equals("type") || arg.equals("pwd")
+                    || arg.equals("cd") || arg.equals("jobs") || arg.equals("history")) {
                 return arg + " is a shell builtin";
             }
             String foundPath = findExecutable(arg);
