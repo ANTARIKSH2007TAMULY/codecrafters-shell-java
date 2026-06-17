@@ -46,12 +46,30 @@ public class Main {
         }
     }
 
+    private static int smallestAvailableJobId(List<Job> jobs) {
+        int candidate = 1;
+        while (true) {
+            boolean used = false;
+            for (Job job : jobs) {
+                if (job.id == candidate) {
+                    used = true;
+                    break;
+                }
+            }
+            if (!used) {
+                return candidate;
+            }
+            candidate++;
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         Scanner scanner = new Scanner(System.in);
         int nextJobId = 1;
         List<Job> jobs = new ArrayList<>();
         while (true) {
             reapCompletedJobs(jobs);
+            nextJobId = smallestAvailableJobId(jobs);
             System.out.print("$ ");
             String input = scanner.nextLine();
             List<String> parts = parseInput(input);
@@ -137,7 +155,7 @@ public class Main {
                     System.out.println("[" + nextJobId + "] " + process.pid());
                     System.out.flush();
                     jobs.add(new Job(nextJobId, process.pid(), input.trim(), process));
-                    nextJobId++;
+                    nextJobId = smallestAvailableJobId(jobs);
                 } else {
                     process.waitFor();
                 }
@@ -330,6 +348,7 @@ public class Main {
 
     private static int executePipeline(List<List<String>> stages, StdoutRedirect outputRedirect,
             StderrRedirect errorRedirect, boolean background, List<Job> jobs, String input, int nextJobId) throws Exception {
+        nextJobId = smallestAvailableJobId(jobs);
         boolean hasBuiltin = false;
         for (List<String> stage : stages) {
             if (isBuiltin(stage.get(0))) {
@@ -345,6 +364,7 @@ public class Main {
 
     private static int executeMultiStagePipeline(List<List<String>> stages, StdoutRedirect outputRedirect,
             StderrRedirect errorRedirect, boolean background, List<Job> jobs, String input, int nextJobId) throws Exception {
+        nextJobId = smallestAvailableJobId(jobs);
         int n = stages.size();
         for (List<String> stage : stages) {
             String cmd = stage.get(0);
@@ -381,7 +401,7 @@ public class Main {
             System.out.println("[" + nextJobId + "] " + last.pid());
             System.out.flush();
             jobs.add(new Job(nextJobId, last.pid(), input.trim(), last));
-            return nextJobId + 1;
+            return smallestAvailableJobId(jobs);
         }
 
         last.waitFor();
@@ -391,11 +411,12 @@ public class Main {
             }
             processes[i].waitFor();
         }
-        return nextJobId;
+        return smallestAvailableJobId(jobs);
     }
 
     private static int executeDualPipeline(List<String> left, List<String> right, StdoutRedirect outputRedirect,
             StderrRedirect errorRedirect, boolean background, List<Job> jobs, String input, int nextJobId) throws Exception {
+        nextJobId = smallestAvailableJobId(jobs);
         String leftCmd = left.get(0);
         String rightCmd = right.get(0);
         boolean leftBuiltin = isBuiltin(leftCmd);
@@ -443,7 +464,7 @@ public class Main {
                 System.out.println("[" + nextJobId + "] " + p2.pid());
                 System.out.flush();
                 jobs.add(new Job(nextJobId, p2.pid(), input.trim(), p2));
-                return nextJobId + 1;
+                return smallestAvailableJobId(jobs);
             }
             p2.waitFor();
             pipeThread.join();
@@ -474,7 +495,7 @@ public class Main {
                 System.out.println("[" + nextJobId + "] " + p2.pid());
                 System.out.flush();
                 jobs.add(new Job(nextJobId, p2.pid(), input.trim(), p2));
-                return nextJobId + 1;
+                return smallestAvailableJobId(jobs);
             }
             p2.waitFor();
             if (p1.isAlive()) {
@@ -482,7 +503,7 @@ public class Main {
             }
             p1.waitFor();
         }
-        return nextJobId;
+        return smallestAvailableJobId(jobs);
     }
 
     private static List<List<String>> splitPipeline(List<String> parts) {
