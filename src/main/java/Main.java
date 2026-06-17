@@ -129,7 +129,17 @@ public class Main {
             } else if (command.equals("jobs")) {
                 listJobs(jobs);
             } else if (command.equals("history")) {
-                for (int i = 0; i < history.size(); i++) {
+                int start = 0;
+                if (parts.size() >= 2) {
+                    try {
+                        int n = Integer.parseInt(parts.get(1));
+                        if (n > 0 && n < history.size()) {
+                            start = history.size() - n;
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+                for (int i = start; i < history.size(); i++) {
                     System.out.printf("%5d  %s%n", i + 1, history.get(i));
                 }
             } else if (command.equals("type")) {
