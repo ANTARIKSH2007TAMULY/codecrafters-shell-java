@@ -9,7 +9,12 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Scanner;
+import org.jline.reader.EndOfFileException;
+import org.jline.reader.LineReader;
+import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.UserInterruptException;
+import org.jline.terminal.Terminal;
+import org.jline.terminal.TerminalBuilder;
 
 public class Main {
     private static class StdoutRedirect {
@@ -64,15 +69,22 @@ public class Main {
     }
 
     public static void main(String[] args) throws Exception {
-        Scanner scanner = new Scanner(System.in);
+        Terminal terminal = TerminalBuilder.builder().system(true).build();
+        LineReader lineReader = LineReaderBuilder.builder().terminal(terminal).build();
         int nextJobId = 1;
         List<Job> jobs = new ArrayList<>();
         List<String> history = new ArrayList<>();
         while (true) {
             reapCompletedJobs(jobs);
             nextJobId = smallestAvailableJobId(jobs);
-            System.out.print("$ ");
-            String input = scanner.nextLine();
+            String input;
+            try {
+                input = lineReader.readLine("$ ");
+            } catch (UserInterruptException e) {
+                continue;
+            } catch (EndOfFileException e) {
+                break;
+            }
             List<String> parts = parseInput(input);
             if (parts.isEmpty()) {
                 continue;
